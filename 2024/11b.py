@@ -1,6 +1,7 @@
 import time
 from functools import lru_cache
 from aocd import data, submit
+from math import log10, floor
 
 start_time = time.time()
 result = 0
@@ -16,7 +17,7 @@ def rec(n_blinks, stone) -> int:
     if stone == 0:
         return rec(n_blinks, 1)
     else:
-        num_digits = len(str(stone))
+        num_digits = floor(log10(stone)) + 1
         if num_digits % 2 == 0:
             divisor = 10 ** (num_digits // 2)
             return rec(n_blinks, stone // divisor) + rec(n_blinks, stone % divisor)
