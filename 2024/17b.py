@@ -1,111 +1,84 @@
 from aocd import data, submit
 import re
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-result = 0
-data = list(map(int, re.findall(r"\d+", data)))
-A_counter = 0
-program = data[3:]
-
-# opcodes 
-# 0
-def adv(A, operand, B):
-    denominator = 2 ** (operand if operand < 5 else B)
-    return A // denominator
-
-# 1
-def bxl(B, operand):
-    return B ^ operand
-
-# 2
-def bst(operand):
-    return operand % 8
-
-# 3
-def jnz(A, operand, instruction_pointer):
-    if A != 0:
-        return operand
-    return instruction_pointer + 2
-
-# 4
-def bxc(B, C):
-    return B ^ C
-
-# 5
-def out(operand):
-    return operand % 8
-
-# 6
-def bdv(A, operand, B):
-    denominator = 2 ** (operand if operand < 5 else B)
-    return A // denominator
-
-# 7
-def cdv(A, operand, B):
-    denominator = 2 ** (operand if operand < 5 else B)
-    return A // denominator
-
-def combo(operand):
+def combo(operand, A, B, C):
     if operand == 4:
         return A
     if operand == 5:
         return B
     if operand == 6:
         return C
-    if operand == 7:
-        print('invalid operand')
-        return
     return operand
 
-start = time.time()
-record = 0
+def process_chunk(start_counter, end_counter, B, C, program):
+    for A_counter in range(start_counter, end_counter):
+        output = []
+        instruction_pointer = 0
+        A = A_counter
+        while instruction_pointer < len(program):
+            opcode = program[instruction_pointer]
+            operand = program[instruction_pointer + 1]
 
-while True:
-    output = []
-    instruction_pointer = 0
-    A = A_counter
+            if opcode == 0:
+                A = A // (2 ** combo(operand, A, B, C))
+            elif opcode == 1:
+                B = B ^ operand
+            elif opcode == 2:
+                B = combo(operand, A, B, C) % 8
+            elif opcode == 3:
+                if A != 0:
+                    instruction_pointer = operand
+                else:
+                    instruction_pointer += 2
+                continue  # Skip the increment of instruction_pointer
+            elif opcode == 4:
+                B = B ^ C
+            elif opcode == 5:
+                output.append(combo(operand, A, B, C) % 8)
+                if output != program[:len(output)]:
+                    break
+            elif opcode == 6:
+                B = A // (2 ** combo(operand, A, B, C))
+            elif opcode == 7:
+                C = A // (2 ** combo(operand, A, B, C))
+            instruction_pointer += 2
+
+        if output == program:
+            return A_counter
+    return None
+
+if __name__ == '__main__':
+    result = 0
+    data = list(map(int, re.findall(r"\d+", data)))
+    program = data[3:]
     B = data[1]
     C = data[2]
-    while instruction_pointer < len(program):
-        prev = A, B, C, instruction_pointer # Save the state of the program for loop detection
-        opcode = program[instruction_pointer]
-        operand = program[instruction_pointer + 1]
 
-        if opcode == 0:
-            A = adv(A, combo(operand), B)
-        elif opcode == 1:
-            B = bxl(B, operand)
-        elif opcode == 2:
-            B = bst(combo(operand))
-        elif opcode == 3:
-            instruction_pointer = jnz(A, operand, instruction_pointer)
-            continue  # Skip the increment of instruction_pointer
-        elif opcode == 4:
-            B = bxc(B, C)
-        elif opcode == 5:
-            output.append(out(combo(operand)))
-        elif opcode == 6:
-            B = bdv(A, combo(operand), B)
-        elif opcode == 7:
-            C = cdv(A, combo(operand), B)
-        instruction_pointer += 2
-        if output != program[:len(output)]:
-            break
-        # log the record of the longest output
-        if len(output) >= record:
-            record = len(output)
-            print(f"Record: {record}, A_counter: {A_counter}")
-        if prev == (A, B, C, instruction_pointer): # Loop detected
-            print('Loop detected')
-            break
-    if output == program:
-        result = A_counter
-        break
-    A_counter += 1
+    start = time.time()
+    record = 0
+    chunk_size = 10000000
+    num_workers = 1
 
-    # logging
-    if A_counter % 1000000 == 0:
-        print(f"A_counter: {A_counter}, Time elapsed: {(time.time() - start)/60:.2f} minutes")
+    start_counter = 1000000000000000000000000000000000000000000
 
-print(result)
-# submit(result)
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        futures = [executor.submit(process_chunk, i, i + chunk_size, B, C, program) for i in range(start_counter, start_counter + chunk_size * num_workers, chunk_size)]
+        start_counter += chunk_size * (num_workers-1)
+
+        found = False
+        while not found:
+            for future in as_completed(futures):
+                result = future.result()
+                if result is not None:
+                    print(result)
+                    # submit(result)
+                    found = True
+                    break
+                # Submit a new task to keep the search going
+                start_counter += chunk_size
+                print(f"A_counter: {start_counter} Time elapsed: {(time.time() - start)/60:.2f} minutes")
+                futures.append(executor.submit(process_chunk, start_counter, start_counter + chunk_size, B, C, program))
+            
+
