@@ -1,6 +1,5 @@
 from aocd import data, submit
-from collections import Counter
-from collections import deque
+from collections import Counter, deque
 
 data = [int(line) for line in data.splitlines()]
 bananas = Counter()
